@@ -1,0 +1,68 @@
+import socket
+from xml.etree import ElementTree
+from datetime import datetime
+import csv
+import pandas as pd
+import numpy as np
+import time
+import array as arr
+
+
+HOST = '192.168.87.107'
+PORT = 10000
+
+
+df = pd.read_csv('processing_times_table.csv')
+c1 = df['Station#01']
+r1 = ['Carrier#1']
+#df1 = pd.DataFrame(r1, columns=c1)
+
+str_c1 = str(c1).encode()
+
+
+#df_11 = df.iloc[0,1]            #[x,y]   x:increas the carriers, y increase stations
+
+
+
+
+# connection
+serv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+serv_sock.bind((HOST, PORT))  # bind socket with server
+
+
+while True:
+    print("Waiting to establish connection.....")
+    serv_sock.listen()
+    conn, addr = serv_sock.accept()
+    with conn:
+        print('Connection by: ', addr)
+        i = 0
+        while i < 16:
+
+            dframe = df.iloc[i,1]
+            dframe_byte = str(dframe).encode()
+            conn.sendall(dframe_byte)
+
+            float_data = float(dframe) / 1000
+            print('send: ')
+            print(dframe)
+            data = conn.recv(1024)
+            data = data.decode("utf-8")
+
+            time.sleep(float_data)
+            str_data = str(data)
+            print('receive: ')
+            #print(len(str_data))
+            print(str_data)
+            if i >=1:
+                str_data = str_data_old + "\n" + str_data
+
+            a_dataframe = pd.DataFrame([str_data])
+            numpy_array = a_dataframe.to_numpy()
+            np.savetxt("decoded_info.txt", numpy_array, delimiter=", ", fmt="%s")
+
+            str_data_old = str_data
+            i += 1
+
+conn.close() 
+serv_sock.close()

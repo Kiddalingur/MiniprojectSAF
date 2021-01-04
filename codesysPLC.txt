@@ -1,0 +1,126 @@
+CASE state OF
+	
+	
+	0: // Initialization:
+		xQA1_RIGHT := TRUE; // Runs the conveyor 
+		xMB20 := FALSE;     // Stopper
+		RFID.ClearError(); // Resets the RFID reader
+		TCP.Connect(sIP := '172.20.66.43', uiPort := 10000); // Setting up socket with AAU smart lab IP 
+		state := 1;
+	
+	
+	1: //TCP
+		IF TCP.xReady AND TCP.xConnected THEN // Wait for TCP 
+			state := 2;
+		END_IF 
+		
+
+	2: //RFID
+		IF RFID.xReady THEN  // Wait for RFID
+			RFID.Connect(usiNodeId := 32, usiNetworkId := 0, usiChannel := 1); 
+			state := 3;
+		END_IF
+
+		
+	
+	3: // Wait for RFID to connect:
+		IF RFID.xReady THEN  
+			dateAndTime(xExecute := TRUE);
+			state := 20;
+		END_IF
+	
+
+	20: // Waiting for dateTime
+		IF dateAndTime.xDone THEN // Check if dateTime is ready
+			state := 4;
+		END_IF
+			
+	
+	4: // Wait for carrier:
+		IF xBG21 = TRUE THEN // Check if a carrier is over xBM21
+			xQA1_RIGHT := FALSE; // Stops conveyor
+			state := 5;
+		END_IF
+		
+
+	5: // Read RFID tag:
+		RFID.ReadTag(uiStartAddress := 0, uiDataLength := SIZEOF(rfidData), pData := ADR(rfidData)); 
+		state := 6;
+		
+
+	6: // Wait for RFID to read tag:
+		IF RFID.xReady THEN 	
+			
+			// Endian swap:
+			carrierID := dc_ecp.SwapWORD(rfidData.uiCarrierID); 
+
+			// Concatenating strings:
+			//xmlString1 := '<plc_read><station_id>Station#10</station_id>';
+			//xmlstring2 := '<carrier_id>Carrier#';
+			//xmlString2 := CONCAT(xmlString2,  UINT_TO_STRING(carrierID));
+			//xmlString2 := CONCAT(xmlString2,  '</carrier_id>');
+			//xmlString3 := '<time_stamp>';
+			//xmlString3 := CONCAT(xmlString3, DT_TO_STRING(dateAndTIme.dtDateAndTime));
+			//xmlString3 := CONCAT(xmlString3, '</time_stamp></plc_read>');
+		XML1 := WSTRING_TO_STRING("<?xml version='1.0' encoding='UTF-8'?><sensorreading><reading><carrierID>");
+		XML2 := UINT_TO_STRING(carrierID);
+		XML3 := WSTRING_TO_STRING("</carrierID>");
+		
+		XMLfinal := CONCAT(CONCAT(XML1,XML2),XML3);
+			state := 10;
+		END_IF
+		
+		10:
+		IF TCP.xConnected AND TCP.xReady THEN
+			tcp.Send(XML2);
+			
+			state := 11;
+		
+		END_IF
+		
+
+		
+//	7: // Send information over to the TCP server:
+	//	TCP.Send(xmlString1); // Sends station ID 
+		//state := 8;
+	
+	
+//	8:
+	//	IF TCP.xReady = TRUE THEN
+		//	TCP.Send(xmlString2); // send second string
+			//state := 9;
+		//END_IF
+	//9:
+	//	IF TCP.xReady = TRUE THEN
+		//	TCP.Send(xmlString3); // send third string
+		//	state := 10;
+	//	END_IF
+	
+	11: // Setting the timer and setting up processing time
+		IF SIZEOF(TCP.sReceived) > 0 THEN // See if server has returned anything
+			returnString := TCP.sReceived;
+
+			time_int := STRING_TO_INT(returnString); // Defining the received string as int 
+			timer(IN:=TRUE, PT:=REAL_TO_TIME(time_int)); // Use the received processing time
+			state := 12;
+		END_IF	
+		
+	12: // Wait time and pull down stopper:
+		IF timer.Q = TRUE THEN // if time is up
+			timer(IN:=FALSE); 
+			xMB20 := TRUE; // pallet kan køre videre
+			xQA1_RIGHT := TRUE; // Start conveyor
+			state := 13;
+		END_IF
+	
+	13: // Wait for carrier to pass:
+		IF xBG21 = FALSE THEN
+			xMB20 := FALSE; // Releases the stopper
+			state := 4;
+		END_IF
+
+END_CASE
+
+timer();
+RFID();
+TCP();
