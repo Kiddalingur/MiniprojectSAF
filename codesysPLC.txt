@@ -108,7 +108,7 @@ CASE state OF
 	12: // Wait time and pull down stopper:
 		IF timer.Q = TRUE THEN // if time is up
 			timer(IN:=FALSE); 
-			xMB20 := TRUE; // pallet kan køre videre
+			xMB20 := TRUE; 
 			xQA1_RIGHT := TRUE; // Start conveyor
 			state := 13;
 		END_IF
